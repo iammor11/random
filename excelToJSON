@@ -1,0 +1,159 @@
+import { Box, Button, Stack, Typography } from "@mui/material";
+import React, { useContext, useRef, useState } from "react";
+import GlobalState from "contexts/GlobalState";
+import * as XLSX from "xlsx";
+
+function FileUploadBox({ setImported }) {
+  const inputRef = useRef();
+  const [state] = useContext(GlobalState);
+
+  const [isFileOver, setIsFileOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState();
+  const [isFilePicked, setIsFilePicked] = useState(false);
+
+  const convertToJson = async (csv) => {
+    let lines = csv.split("\n");
+    let result = [];
+    let h = lines[0].split(",")
+    let headers = h?.map(d => {
+      return d?.split("*")[0].toLowerCase().split(' ').join('_')
+    })
+    for (var i = 1; i < lines.length; i++) {
+      let obj = {};
+      let currentline = lines[i].split(",");
+      for (var j = 0; j < headers.length; j++) {
+        obj[headers[j]] = currentline[j];
+      }
+      let jsonData = JSON.stringify({
+        "data": {
+          "type": "regst_HEI_Registration",
+          "attributes": {...obj, name: state?.userDetails?.name, institution_code: state?.userDetails?.otherData?.code, userid: state?.userDetails?.otherData?.id}
+        }
+      })
+      await fetch(`/api/v1/university/upload`, {
+        method: "POST",
+        body: jsonData,
+      })
+        .then((res) => res.json())
+        .then(({ success, data, error }) => {
+          if (success) {
+            console.log(data);
+          }
+        });
+      result.push(jsonData);
+    }
+    setImported(true);
+    return result;
+  }
+
+  const readFile = async (file) => {
+    let f = file;
+    let data
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: "binary" });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      data = XLSX.utils.sheet_to_csv(ws, { header: 1 });
+      convertToJson(data)
+    };
+    reader.readAsBinaryString(f);
+  }
+
+  const changeHandler = async (event) => {
+    setIsFilePicked(true);
+    setSelectedFile(event.target.files[0]);
+    readFile(event.target.files[0])
+  };
+
+  const handleClick = {
+    browse: () => inputRef.current.click(),
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFileOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFileOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFile(e.dataTransfer.files[0]);
+    setIsFilePicked(true);
+    setIsFileOver(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  if (isFilePicked) return <Typography>File is being uploaded... Please wait</Typography>;
+
+  return (
+    <>
+      <Stack
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e)}
+        onDragEnter={(e) => handleDragEnter(e)}
+        onDragLeave={(e) => handleDragLeave(e)}
+        my={2}
+        sx={{
+          width: "100%",
+          height: 150,
+          position: "relative",
+          border: isFileOver ? "2px dashed #000C4B" : "2px dashed #ccc",
+          backgrond: "transparent",
+        }}
+      >
+        <input
+          ref={inputRef}
+          style={{
+            opacity: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 2,
+            cursor: "pointer",
+          }}
+          type="file"
+          name="file"
+          onChange={changeHandler}
+          title=""
+        />
+        <Stack
+          justifyContent="center"
+          alignItems="center"
+          gap={1}
+          sx={{ position: "absolute", top: 0, bottom: 0, right: 0, left: 0, zIndex: 1 }}
+        >
+          <Typography variant="caption" sx={{ color: "#B7B7B7", textAlign: "center" }}>
+            Drag your file here or select file from your computer
+          </Typography>
+
+          <Button
+            onClick={handleClick.browse}
+            variant="outlined"
+            size="small"
+            sx={{
+              color: "primary.main",
+              fontWeight: "800",
+              textTransform: "none",
+              px: 2,
+            }}
+          >
+            Select Excel File
+          </Button>
+        </Stack>
+      </Stack>
+    </>
+  );
+}
+
+export default FileUploadBox;
